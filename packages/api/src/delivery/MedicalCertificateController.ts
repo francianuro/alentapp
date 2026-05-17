@@ -5,6 +5,8 @@ import { GetMedicalCertificatesUseCase }
 from '../application/GetMedicalCertificateUseCase.js';
 import { UpdateMedicalCertificateUseCase }
 from '../application/UpdateMedicalCertificateUseCase.js';
+import { DeleteMedicalCertificateUseCase }
+from '../application/DeleteMedicalCertificateUseCase.js';
 import {
     CreateMedicalCertificateRequest,
     UpdateMedicalCertificateRequest,
@@ -15,6 +17,7 @@ export class MedicalCertificateController {
             CreateMedicalCertificateUseCase,
         private readonly getMedicalCertificatesUseCase: GetMedicalCertificatesUseCase,
         private readonly updateMedicalCertificateUseCase: UpdateMedicalCertificateUseCase,
+        private readonly deleteMedicalCertificateUseCase: DeleteMedicalCertificateUseCase,
     ) {}
     async getAll(_request: FastifyRequest, reply: FastifyReply) {
         try {
@@ -74,6 +77,28 @@ export class MedicalCertificateController {
                 error.message.includes('inválido') ||
                 error.message.includes('posterior')
             ) {
+                return reply.status(400).send({ error: error.message });
+            }
+            return reply.status(500).send({
+                error: 'Error interno, reintente más tarde',
+            });
+        }
+    }
+    async delete(
+        request: FastifyRequest<{
+            Params: { id: string };
+        }>,
+        reply: FastifyReply,
+    ) {
+        try {
+            const { id } = request.params;
+            await this.deleteMedicalCertificateUseCase.execute(id);
+            return reply.status(200).send({ message: 'Certificado eliminado correctamente' });
+        } catch (error: any) {
+            if (error.message.includes('no encontrado')) {
+                return reply.status(404).send({ error: error.message });
+            }
+            if (error.message.includes('No se puede eliminar')) {
                 return reply.status(400).send({ error: error.message });
             }
             return reply.status(500).send({

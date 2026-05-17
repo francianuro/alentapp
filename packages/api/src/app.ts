@@ -21,6 +21,7 @@ import { CreateMedicalCertificateUseCase } from './application/CreateMedicalCert
 import { MedicalCertificateController } from './delivery/MedicalCertificateController.js';
 import { GetMedicalCertificatesUseCase } from './application/GetMedicalCertificateUseCase.js';
 import { UpdateMedicalCertificateUseCase } from './application/UpdateMedicalCertificateUseCase.js';
+import { DeleteMedicalCertificateUseCase } from './application/DeleteMedicalCertificateUseCase.js';
 import { PostgresPaymentRepository } from './infrastructure/PostgresPaymentRepository.ts';
 import { PaymentValidator } from './domain/services/PaymentValidator.js';
 import { CreatePaymentUseCase } from './application/CreatePaymentUseCase.ts';
@@ -90,10 +91,14 @@ export function buildApp() {
       medicalCertificateRepo,
       medicalCertificateValidator,
     );
+    const deleteMedicalCertificateUseCase = new DeleteMedicalCertificateUseCase(
+      medicalCertificateRepo,
+    );
     const medicalCertificateController = new MedicalCertificateController(
         createMedicalCertificateUseCase,
         getMedicalCertificatesUseCase,
         updateMedicalCertificateUseCase,
+        deleteMedicalCertificateUseCase, 
     );
 
     const paymentRepo = new PostgresPaymentRepository();
@@ -123,6 +128,7 @@ export function buildApp() {
     server.get('/api/v1/certificados-medicos', medicalCertificateController.getAll.bind(medicalCertificateController));
     server.post('/api/v1/certificados-medicos', medicalCertificateController.create.bind(medicalCertificateController));
     server.put('/api/v1/certificados-medicos/:id', medicalCertificateController.update.bind(medicalCertificateController));
+    server.delete('/api/v1/certificados-medicos/:id', medicalCertificateController.delete.bind(medicalCertificateController));
 
     server.post('/api/v1/pagos', paymentController.create.bind(paymentController));
     server.get('/api/v1/pagos', paymentController.getAll.bind(paymentController));

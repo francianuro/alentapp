@@ -16,4 +16,5 @@ export interface MedicalCertificateRepository {
     id: string,
     data: UpdateMedicalCertificateRequest
   ): Promise<MedicalCertificateDTO>
+  delete(id: string): Promise<void>
 }

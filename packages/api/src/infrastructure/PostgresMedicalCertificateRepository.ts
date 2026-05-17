@@ -121,4 +121,12 @@ export class PostgresMedicalCertificateRepository
       memberId: certificate.memberId,
     };
   }
+  async delete(id: string): Promise<void> {
+    await prisma.medicalCertificate.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+      },
+    })
+  }
 }

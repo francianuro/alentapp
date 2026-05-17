@@ -2,7 +2,7 @@ import {
   Button, Heading, HStack, Stack, Text, Box, Flex,
   Input, Spinner, Center, Table, IconButton,
 } from "@chakra-ui/react";
-import { LuPlus, LuPencil, LuRefreshCw } from "react-icons/lu";
+import { LuPlus, LuPencil, LuTrash2, LuRefreshCw } from "react-icons/lu";
 import { useEffect, useState } from "react";
 import { medicalCertificatesService } from "../services/medicalCertificates";
 import { membersService } from "../services/members";
@@ -43,6 +43,8 @@ export function MedicalCertificatesView() {
   });
   const [editIsValidated, setEditIsValidated] = useState("true");
   const fetchCertificates = async () => {
+    setError(null);
+    setSuccessMessage(null);
     setIsLoading(true);
     setError(null);
     try {
@@ -99,6 +101,19 @@ export function MedicalCertificatesView() {
       setError(err.message || "Error al guardar el certificado");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+  const handleDelete = async (id: string, memberName: string) => {
+    if (window.confirm(`¿Estás seguro de que deseas eliminar el certificado médico de "${memberName}"? Esta acción no se puede deshacer.`)) {
+      try {
+        setError(null);
+        setSuccessMessage(null);
+        await medicalCertificatesService.delete(id);
+        setSuccessMessage("Certificado eliminado correctamente.");
+        fetchCertificates();
+      } catch (err: any) {
+        setError(err.message || "Error al eliminar el certificado");
+      }
     }
   };
   const getMemberName = (memberId: string) => {
@@ -288,6 +303,14 @@ export function MedicalCertificatesView() {
                         onClick={() => openEditModal(cert)}
                       >
                         <LuPencil />
+                      </IconButton>
+                      <IconButton
+                        variant="ghost" size="sm"
+                        colorPalette="red"
+                        aria-label="Eliminar certificado"
+                        onClick={() => handleDelete(cert.id, getMemberName(cert.memberId))}
+                      >
+                        <LuTrash2 />
                       </IconButton>
                     </Table.Cell>
                   </Table.Row>
