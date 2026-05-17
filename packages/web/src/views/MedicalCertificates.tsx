@@ -43,6 +43,8 @@ export function MedicalCertificatesView() {
   });
   const [editIsValidated, setEditIsValidated] = useState("true");
   const fetchCertificates = async () => {
+    setError(null);
+    setSuccessMessage(null);
     setIsLoading(true);
     setError(null);
     try {
@@ -104,6 +106,8 @@ export function MedicalCertificatesView() {
   const handleDelete = async (id: string, memberName: string) => {
     if (window.confirm(`¿Estás seguro de que deseas eliminar el certificado médico de "${memberName}"? Esta acción no se puede deshacer.`)) {
       try {
+        setError(null);
+        setSuccessMessage(null);
         await medicalCertificatesService.delete(id);
         setSuccessMessage("Certificado eliminado correctamente.");
         fetchCertificates();
