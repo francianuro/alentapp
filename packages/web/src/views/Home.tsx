@@ -49,6 +49,14 @@ export function HomeView() {
                 />
 
 
+
+                <SectionCard
+                    title="Lockers"
+                    description="Administra los lockers, su ubicación, estado y socio asignado."
+                    to="/lockers"
+                    icon={LuReceipt}
+                />
+
                 <SectionCard
                     title="Pagos"
                     description="Gestiona los pagos de las cuotas de los socios."
