@@ -32,6 +32,13 @@ import { CreateEnrollmentUseCase } from './application/CreateEnrollmentUseCase.j
 import { GetEnrollmentsUseCase } from './application/GetEnrollmentsUseCase.js';
 import { DeleteEnrollmentUseCase } from './application/DeleteEnrollmentUseCase.js';
 import { EnrollmentController } from './delivery/EnrollmentController.js';
+import { PostgresLockerRepository } from './infrastructure/PostgresLockerRepository.js';
+import { LockerValidator } from './domain/services/LockerValidator.js';
+import { CreateLockerUseCase } from './application/CreateLockerUseCase.js';
+import { GetLockersUseCase } from './application/GetLockersUseCase.js';
+import { UpdateLockerUseCase } from './application/UpdateLockerUseCase.js';
+import { DeleteLockerUseCase } from './application/DeleteLockerUseCase.js';
+import { LockerController } from './delivery/LockerController.js';
 
 export function buildApp() {
     const server = Fastify({
@@ -108,6 +115,20 @@ export function buildApp() {
     const getPaymentsUseCase = new GetPaymentsUseCase(paymentRepo);
     const paymentController = new PaymentController(createPaymentUseCase, updatePaymentUseCase,getPaymentsUseCase);
 
+
+    const lockerRepo = new PostgresLockerRepository();
+    const lockerValidator = new LockerValidator(lockerRepo);
+    const createLockerUseCase = new CreateLockerUseCase(lockerRepo, memberRepo, lockerValidator);
+    const getLockersUseCase = new GetLockersUseCase(lockerRepo);
+    const updateLockerUseCase = new UpdateLockerUseCase(lockerRepo, memberRepo, lockerValidator);
+    const deleteLockerUseCase = new DeleteLockerUseCase(lockerRepo);
+    const lockerController = new LockerController(
+        createLockerUseCase,
+        getLockersUseCase,
+        updateLockerUseCase,
+        deleteLockerUseCase
+    );
+
     const createEnrollmentUseCase = new CreateEnrollmentUseCase(enrollmentRepo, memberRepo, sportRepo);
     const getEnrollmentsUseCase = new GetEnrollmentsUseCase(enrollmentRepo);
     const deleteEnrollmentUseCase = new DeleteEnrollmentUseCase(enrollmentRepo);
@@ -134,6 +155,14 @@ export function buildApp() {
     server.get('/api/v1/pagos', paymentController.getAll.bind(paymentController));
 
     server.put('/api/v1/pagos/:id', paymentController.update.bind(paymentController));
+
+
+    server.get('/api/v1/lockers', lockerController.getAll.bind(lockerController));
+    server.post('/api/v1/lockers', lockerController.create.bind(lockerController));
+    server.put('/api/v1/lockers/:id', lockerController.update.bind(lockerController));
+    server.delete('/api/v1/lockers/:id', lockerController.delete.bind(lockerController));
+    server.post('/api/v1/locker', lockerController.create.bind(lockerController));
+    server.put('/api/v1/locker/:id', lockerController.update.bind(lockerController));
 
     server.get('/api/v1/inscripciones', enrollmentController.getAll.bind(enrollmentController));
     server.post('/api/v1/inscripciones', enrollmentController.create.bind(enrollmentController));

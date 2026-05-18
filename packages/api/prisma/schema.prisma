@@ -30,6 +30,12 @@ enum PaymentStatus {
     Canceled
 }
 
+enum LockerStatus {
+    Available
+    Occupied
+    Maintenance
+}
+
 model Payment {
     id              String         @id @default(uuid())
     amount          Float
@@ -61,6 +67,7 @@ model Member {
     // Relación con Payment
     payments    Payment[]
     enrollments Enrollment[]
+    lockers     Locker[]
 
     @@map("members") // Para que en la DB la tabla se llame 'members' en minúscula
 }
@@ -77,6 +84,20 @@ model Sport {
     enrollments                  Enrollment[]
 
     @@map("sports")
+}
+
+
+model Locker {
+    id         String       @id @default(uuid())
+    number     Int          @unique
+    location   String
+    status     LockerStatus @default(Available)
+    member_id  String?
+    member     Member?      @relation(fields: [member_id], references: [id], onDelete: SetNull)
+    created_at DateTime     @default(now())
+
+    @@index([member_id])
+    @@map("lockers")
 }
 
 model Enrollment {
