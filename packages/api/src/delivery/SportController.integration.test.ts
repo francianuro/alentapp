@@ -1,9 +1,19 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { CreateSportRequest, UpdateSportRequest } from '@alentapp/shared';
 
-const sportRepositoryState = vi.hoisted(() => ({
-  sports: [
+const repositoryState = vi.hoisted(() => ({
+  sports: [] as any[],
+  enrollments: [] as any[],
+}));
+
+vi.hoisted(() => {
+  process.env.DATABASE_URL =
+    process.env.DATABASE_URL ?? 'postgresql://admin:password123@localhost:5432/alentapp_db';
+});
+
+const resetRepositoryState = () => {
+  repositoryState.sports = [
     {
       id: 'sport-1',
       name: 'Fútbol',
@@ -12,28 +22,25 @@ const sportRepositoryState = vi.hoisted(() => ({
       additional_price: 1500,
       requires_medical_certificate: true,
     },
-  ],
-}));
+  ];
 
-vi.hoisted(() => {
-  process.env.DATABASE_URL =
-    process.env.DATABASE_URL ?? 'postgresql://admin:password123@localhost:5432/alentapp_db';
-});
+  repositoryState.enrollments = [];
+};
 
 vi.mock('../infrastructure/PostgresSportRepository.js', () => {
   return {
     PostgresSportRepository: class {
       async findAll() {
-        return sportRepositoryState.sports;
+        return repositoryState.sports;
       }
 
       async findById(id: string) {
-        return sportRepositoryState.sports.find((sport) => sport.id === id) ?? null;
+        return repositoryState.sports.find((sport) => sport.id === id) ?? null;
       }
 
       async findByName(name: string) {
         return (
-          sportRepositoryState.sports.find(
+          repositoryState.sports.find(
             (sport) => sport.name.toLowerCase() === name.trim().toLowerCase(),
           ) ?? null
         );
@@ -41,32 +48,30 @@ vi.mock('../infrastructure/PostgresSportRepository.js', () => {
 
       async create(data: CreateSportRequest) {
         const sport = {
-          id: `sport-${sportRepositoryState.sports.length + 1}`,
+          id: `sport-${repositoryState.sports.length + 1}`,
           ...data,
         };
 
-        sportRepositoryState.sports.push(sport);
+        repositoryState.sports.push(sport);
 
         return sport;
       }
 
       async update(id: string, data: UpdateSportRequest) {
-        const index = sportRepositoryState.sports.findIndex((sport) => sport.id === id);
+        const index = repositoryState.sports.findIndex((sport) => sport.id === id);
 
         const updatedSport = {
-          ...sportRepositoryState.sports[index],
+          ...repositoryState.sports[index],
           ...data,
         };
 
-        sportRepositoryState.sports[index] = updatedSport;
+        repositoryState.sports[index] = updatedSport;
 
         return updatedSport;
       }
 
       async delete(id: string) {
-        sportRepositoryState.sports = sportRepositoryState.sports.filter(
-          (sport) => sport.id !== id,
-        );
+        repositoryState.sports = repositoryState.sports.filter((sport) => sport.id !== id);
       }
     },
   };
@@ -75,12 +80,47 @@ vi.mock('../infrastructure/PostgresSportRepository.js', () => {
 vi.mock('../infrastructure/PostgresEnrollmentRepository.js', () => {
   return {
     PostgresEnrollmentRepository: class {
-      async existsBySportId() {
-        return false;
+      async create(data: any) {
+        const enrollment = {
+          id: `enrollment-${repositoryState.enrollments.length + 1}`,
+          member_id: data.member_id,
+          sport_id: data.sport_id,
+          enrollment_date: data.enrollment_date ?? new Date().toISOString(),
+          is_active: true,
+          member_name: data.member_id === 'member-1' ? 'Socio Existente' : undefined,
+          sport_name: repositoryState.sports.find((sport) => sport.id === data.sport_id)?.name,
+        };
+
+        repositoryState.enrollments.push(enrollment);
+
+        return enrollment;
       }
 
       async findAll() {
-        return [];
+        return repositoryState.enrollments;
+      }
+
+      async findById(id: string) {
+        return repositoryState.enrollments.find((enrollment) => enrollment.id === id) ?? null;
+      }
+
+      async existsBySportId(sportId: string) {
+        return repositoryState.enrollments.some(
+          (enrollment) => enrollment.sport_id === sportId,
+        );
+      }
+
+      async existsByMemberAndSport(memberId: string, sportId: string) {
+        return repositoryState.enrollments.some(
+          (enrollment) =>
+            enrollment.member_id === memberId && enrollment.sport_id === sportId,
+        );
+      }
+
+      async delete(id: string) {
+        repositoryState.enrollments = repositoryState.enrollments.filter(
+          (enrollment) => enrollment.id !== id,
+        );
       }
     },
   };
@@ -89,16 +129,38 @@ vi.mock('../infrastructure/PostgresEnrollmentRepository.js', () => {
 vi.mock('../infrastructure/PostgresMemberRepository.js', () => {
   return {
     PostgresMemberRepository: class {
-      async findById() {
-        return null;
+      async findAll() {
+        return [{ id: 'member-1', name: 'Socio Existente' }];
+      }
+
+      async findById(id: string) {
+        return id === 'member-1'
+          ? {
+              id: 'member-1',
+              name: 'Socio Existente',
+              dni: '12345678',
+              email: 'socio@test.com',
+              birthdate: '1990-01-01',
+              category: 'Pleno',
+              status: 'Activo',
+            }
+          : null;
       }
 
       async findByDni() {
         return null;
       }
 
-      async findAll() {
-        return [];
+      async create(data: any) {
+        return { id: 'member-2', ...data };
+      }
+
+      async update(id: string, data: any) {
+        return { id, ...data };
+      }
+
+      async delete() {
+        return;
       }
     },
   };
@@ -146,6 +208,10 @@ describe('Sport API Integration Tests', () => {
   beforeAll(async () => {
     app = buildApp();
     await app.ready();
+  });
+
+  beforeEach(() => {
+    resetRepositoryState();
   });
 
   afterAll(async () => {
@@ -213,5 +279,40 @@ describe('Sport API Integration Tests', () => {
     expect(updatedBody.data.max_capacity).toBe(25);
     expect(updatedBody.data.additional_price).toBe(1800);
     expect(updatedBody.data.requires_medical_certificate).toBe(true);
+  });
+
+  it('debe rechazar la eliminación de un deporte con inscripciones asociadas', async () => {
+    const enrollmentResponse = await app.inject({
+      method: 'POST',
+      url: '/api/v1/inscripciones',
+      payload: {
+        member_id: 'member-1',
+        sport_id: 'sport-1',
+      },
+    });
+
+    expect(enrollmentResponse.statusCode).toBe(201);
+
+    const deleteResponse = await app.inject({
+      method: 'DELETE',
+      url: '/api/v1/deportes/sport-1',
+    });
+
+    expect(deleteResponse.statusCode).toBe(409);
+
+    const deleteBody = JSON.parse(deleteResponse.payload);
+
+    expect(deleteBody.error).toBe('No se puede eliminar un deporte con inscripciones');
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/v1/deportes',
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+
+    const listBody = JSON.parse(listResponse.payload);
+
+    expect(listBody.data.some((sport: any) => sport.id === 'sport-1')).toBe(true);
   });
 });
