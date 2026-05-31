@@ -4,7 +4,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { buildApp } from '../app.ts';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../generated/client/client.ts';
+import { PrismaClient } from '../generated/client/client.js';
 
 describe('Payment API End-to-End Tests', () => {
     let app: FastifyInstance;

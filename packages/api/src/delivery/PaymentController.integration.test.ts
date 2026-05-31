@@ -1,142 +1,195 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import { FastifyInstance } from 'fastify';
-import { buildApp } from '../app.ts';
-import { CreatePaymentRequest } from '@alentapp/shared';
 
-// Se mockea el repositori de pagos para no depender de la DB real
-vi.mock('../infraestructure/PostgresPaymentRepository.ts', () => {
-    return {
-        PostgresPaymentRepository: class {
-            async findAll() {
-                return [
-                    {
-                        id: 'uuid-1',
-                        amount: 1000,
-                        month: 5,
-                        year: 2026,
-                        status: 'Pending',
-                        member_id: 'uuid-member-1',
-                        due_date: '2026-05-29',
-                        payment_date: null,
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                    }
-                ];
-            }
+const repositoryState = vi.hoisted(() => ({
+  payments: [] as any[]
+}));
 
-            async findById(id: string) {
-                if (id === 'uuid-1') return { id: 'uuid-1', amount: 1000, status: 'Pending', month: 5, year: 2026, member_id: 'uuid-member-1', due_date: '2026-05-29', payment_date: null, created_at: '', updated_at: '' };
-                return null;
-            }
-            async create(data: any) {
-                return { id: 'uuid-nuevo', ...data, status: 'Pending', payment_date: null, created_at: '', updated_at: '' };
-            }
-            async update(id: string, data: any) {
-                return { id, amount: 1000, month: 5, year: 2026, status: 'Pending', member_id: 'uuid-member-1', due_date: '', payment_date: null, created_at: '', updated_at: '', ...data };
-            }
-        }
-    };
-});
+const resetRepositoryState = () => {
+  repositoryState.payments = [
+    {
+      id: 'uuid-1',
+      member_id: 'uuid-member-1',
+      amount: 1000,
+      month: 5,
+      year: 2026,
+      due_date: '2026-05-29',
+      status: 'Pending',
+      payment_date: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+  ];
+};
 
-// Se mockea el repositorio de Miembros (necesario para PaymentValidator.validateMemberExists)
-vi.mock('../infrastructure/PostgresMemberRepository.js', () => {
-    return {
-        PostgresMemberRepository: class {
-            async findById(id: string) {
-                return id === 'uuid-member-1' ? { id: 'uuid-member-1', name: 'Test Member' } : null;
-            }
-            async findAll() { return []; }
-            async findByDni() { return null; }
-            async create(data: any) { return { id: 'new', ...data }; }
-            async update(id: string, data: any) { return { id, ...data }; }
-            async delete() { return; }
-        }
-    };
-});
+vi.mock('../infrastructure/PostgresPaymentRepository.ts', () => ({
+  PostgresPaymentRepository: class {
+    async findAll() {
+      return repositoryState.payments;
+    }
 
+    async findById(id: string) {
+      return repositoryState.payments.find(p => p.id === id) ?? null;
+    }
+
+    async create(data: any) {
+      const payment = {
+        id: `payment-${repositoryState.payments.length + 1}`,
+        ...data,
+        status: 'Pending',
+        payment_date: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      repositoryState.payments.push(payment);
+
+      return payment;
+    }
+
+    async update(id: string, data: any) {
+      const payment = repositoryState.payments.find(p => p.id === id);
+
+      if (!payment) {
+        return null;
+      }
+
+      Object.assign(payment, data, {
+        updated_at: new Date().toISOString()
+      });
+
+      return payment;
+    }
+  }
+}));
+
+vi.mock('../infrastructure/PostgresMemberRepository.js', () => ({
+  PostgresMemberRepository: class {
+    async findById(id: string) {
+      if (id === 'uuid-member-1') {
+        return {
+          id: 'uuid-member-1',
+          name: 'Socio Test'
+        };
+      }
+
+      return null;
+    }
+  }
+}));
+
+const { buildApp } = await import('../app.js');
 
 describe('Payment API Integration Tests', () => {
-    let app: FastifyInstance;
+  let app: FastifyInstance;
 
-    beforeAll(async () => {
-        app = buildApp();
-        await app.ready();
+  beforeAll(async () => {
+    app = buildApp();
+    await app.ready();
+  });
+
+  beforeEach(() => {
+    resetRepositoryState();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('TEST 1: GET /api/v1/pagos retorna 200 con array de datos', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/pagos'
     });
 
-    afterAll(async () => {
-        await app.close();
+    expect(response.statusCode).toBe(200);
+
+    const body = JSON.parse(response.payload);
+
+    expect(body.data).toBeInstanceOf(Array);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].id).toBe('uuid-1');
+  });
+
+  it('TEST 2: POST /api/v1/pagos crea un pago y retorna 201 con estado Pending', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/pagos',
+      payload: {
+        member_id: 'uuid-member-1',
+        amount: 2000,
+        month: 6,
+        year: 2026,
+        due_date: '2026-06-30'
+      }
     });
 
-    // TEST DE INTEGRACION 1
-    it('GET /api/v1/pagos - debe retornar 200 y la lista de pagos', async () => {
-        const response = await app.inject({ method: 'GET', url: '/api/v1/pagos' });
+    expect(response.statusCode).toBe(201);
 
-        expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.payload);
 
-        const body = JSON.parse(response.payload);
+    expect(body.amount).toBe(2000);
+    expect(body.status).toBe('Pending');
+    expect(body.member_id).toBe('uuid-member-1');
+  });
 
-        expect(body.data).toBeInstanceOf(Array);
-        expect(body.data[0].id).toBe('uuid-1');
+  it('TEST 3: POST /api/v1/pagos con member_id inexistente retorna 404', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/pagos',
+      payload: {
+        member_id: 'member-inexistente',
+        amount: 2000,
+        month: 6,
+        year: 2026,
+        due_date: '2026-06-30'
+      }
     });
 
-    // TEST DE INTEGRACIÓN 2
-    it('POST /api/v1/pagos — debe retornar 201 y crear un pago', async () => {
-        const payload: CreatePaymentRequest = {
-            member_id: 'uuid-member-1', // Este ID existe en el mock de MemberRepo
-            amount: 2000,
-            month: 6,
-            year: 2026,
-            due_date: '2026-06-30',
-        };
-        const response = await app.inject({ method: 'POST', url: '/api/v1/pagos', payload });
-        expect(response.statusCode).toBe(201);
-        const body = JSON.parse(response.payload);
-        expect(body.status).toBe('Pending');
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('TEST 4: POST /api/v1/pagos con monto negativo retorna 400', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/pagos',
+      payload: {
+        member_id: 'uuid-member-1',
+        amount: -100,
+        month: 6,
+        year: 2026,
+        due_date: '2026-06-30'
+      }
     });
 
-    // TEST DE INTEGRACIÓN 3
-    it('POST /api/v1/pagos — debe retornar 404 si el socio no existe', async () => {
-        const payload: CreatePaymentRequest = {
-            member_id: 'uuid-inexistente', // Este ID NO existe en el mock de MemberRepo
-            amount: 2000,
-            month: 6,
-            year: 2026,
-            due_date: '2026-06-30',
-        };
-        const response = await app.inject({ method: 'POST', url: '/api/v1/pagos', payload });
-        expect(response.statusCode).toBe(404);
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('TEST 5: PUT /api/v1/pagos/:id actualiza un pago Pending y retorna 200', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/pagos/uuid-1',
+      payload: {
+        status: 'Paid'
+      }
     });
 
-    // TEST DE INTEGRACIÓN 4
-    it('POST /api/v1/pagos — debe retornar 400 si el monto es inválido', async () => {
-        const payload: CreatePaymentRequest = {
-            member_id: 'uuid-member-1',
-            amount: -100, // Monto inválido
-            month: 6,
-            year: 2026,
-            due_date: '2026-06-30',
-        };
-        const response = await app.inject({ method: 'POST', url: '/api/v1/pagos', payload });
-        expect(response.statusCode).toBe(400);
+    expect(response.statusCode).toBe(200);
+
+    const body = JSON.parse(response.payload);
+
+    expect(body.status).toBe('Paid');
+  });
+
+  it('TEST 6: PUT /api/v1/pagos/:id inexistente retorna 404', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/pagos/payment-inexistente',
+      payload: {
+        status: 'Paid'
+      }
     });
 
-    // TEST DE INTEGRACIÓN 5
-    it('PUT /api/v1/pagos/:id — debe retornar 200 al actualizar un pago Pending', async () => {
-        const response = await app.inject({
-            method: 'PUT',
-            url: '/api/v1/pagos/uuid-1', // El id uuid-1 existe en el mock del PaymentRepo con status Pending
-            payload: { status: 'Paid' }
-        });
-        expect(response.statusCode).toBe(200);
-    });
-
-    // TEST DE INTEGRACIÓN 6
-    it('PUT /api/v1/pagos/:id — debe retornar 404 si el pago no existe', async () => {
-        const response = await app.inject({
-            method: 'PUT',
-            url: '/api/v1/pagos/uuid-inexistente',
-            payload: { amount: 999 }
-        });
-        expect(response.statusCode).toBe(404);
-    });
-})
+    expect(response.statusCode).toBe(404);
+  });
+});

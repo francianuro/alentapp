@@ -50,7 +50,7 @@ describe('PaymentController', () => {
         // TEST 10: Retorna 404 si el socio no existe
         it('debe devolver 404 si el socio no existe', async () => {
             mockCreateUseCase.execute.mockRejectedValueOnce(
-                new Error('Error: El socio especificado o existe')
+                new Error('Error: El socio especificado no existe')
             );
 
             await controller.create(mockRequest as any, mockReply as any);
