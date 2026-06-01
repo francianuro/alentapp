@@ -315,4 +315,119 @@ describe('Sport API Integration Tests', () => {
 
     expect(listBody.data.some((sport: any) => sport.id === 'sport-1')).toBe(true);
   });
+
+    it('debe rechazar la creación de un deporte con cupo menor o igual a cero', async () => {
+    const createPayload: CreateSportRequest = {
+      name: 'Natación',
+      description: 'Pileta cubierta',
+      max_capacity: 0,
+      additional_price: 2000,
+      requires_medical_certificate: true,
+    };
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/v1/deportes',
+      payload: createPayload,
+    });
+
+    expect(createResponse.statusCode).toBe(400);
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/v1/deportes',
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+
+    const listBody = JSON.parse(listResponse.payload);
+
+    expect(listBody.data.some((sport: any) => sport.name === 'Natación')).toBe(false);
+  });
+
+  it('debe rechazar la creación de un deporte con nombre duplicado', async () => {
+    const createPayload: CreateSportRequest = {
+      name: ' Fútbol ',
+      description: 'Intento de duplicado',
+      max_capacity: 10,
+      additional_price: 1000,
+      requires_medical_certificate: false,
+    };
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/v1/deportes',
+      payload: createPayload,
+    });
+
+    expect(createResponse.statusCode).toBe(409);
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/v1/deportes',
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+
+    const listBody = JSON.parse(listResponse.payload);
+
+    const footballSports = listBody.data.filter((sport: any) => sport.name === 'Fútbol');
+
+    expect(footballSports).toHaveLength(1);
+  });
+
+  it('debe rechazar la actualización de un deporte con cupo menor o igual a cero', async () => {
+    const updatePayload: UpdateSportRequest = {
+      description: 'Descripción inválida por cupo',
+      max_capacity: 0,
+      additional_price: 2500,
+      requires_medical_certificate: false,
+    };
+
+    const updateResponse = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/deportes/sport-1',
+      payload: updatePayload,
+    });
+
+    expect(updateResponse.statusCode).toBe(400);
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/v1/deportes',
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+
+    const listBody = JSON.parse(listResponse.payload);
+
+    const sport = listBody.data.find((sport: any) => sport.id === 'sport-1');
+
+    expect(sport).toBeDefined();
+    expect(sport.name).toBe('Fútbol');
+    expect(sport.description).toBe('Cancha de fútbol 5');
+    expect(sport.max_capacity).toBe(20);
+    expect(sport.additional_price).toBe(1500);
+    expect(sport.requires_medical_certificate).toBe(true);
+  });
+
+  it('debe eliminar físicamente un deporte sin inscripciones asociadas', async () => {
+    const deleteResponse = await app.inject({
+      method: 'DELETE',
+      url: '/api/v1/deportes/sport-1',
+    });
+
+    expect(deleteResponse.statusCode).toBe(204);
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/v1/deportes',
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+
+    const listBody = JSON.parse(listResponse.payload);
+
+    expect(listBody.data.some((sport: any) => sport.id === 'sport-1')).toBe(false);
+  });
 });
