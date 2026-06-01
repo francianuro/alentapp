@@ -51,4 +51,73 @@ describe('CreateSportUseCase', () => {
     });
     expect(result.id).toBe('sport-1');
   });
+
+    it('debe rechazar la creación si el nombre está vacío', async () => {
+    const request: CreateSportRequest = {
+      name: '   ',
+      description: 'Descripción válida',
+      max_capacity: 20,
+      additional_price: 1500,
+      requires_medical_certificate: true,
+    };
+
+    vi.mocked(mockSportValidator.validateNameIsRequired).mockImplementationOnce(() => {
+      throw new Error('El nombre del deporte es obligatorio');
+    });
+
+    await expect(useCase.execute(request)).rejects.toThrow(
+      'El nombre del deporte es obligatorio',
+    );
+
+    expect(mockSportValidator.validateNameIsRequired).toHaveBeenCalledWith('   ');
+    expect(mockSportValidator.validateMaxCapacity).not.toHaveBeenCalled();
+    expect(mockSportValidator.validateNameIsUnique).not.toHaveBeenCalled();
+    expect(mockSportRepo.create).not.toHaveBeenCalled();
+  });
+
+  it('debe rechazar la creación si el cupo máximo es menor o igual a cero', async () => {
+    const request: CreateSportRequest = {
+      name: 'Natación',
+      description: 'Pileta cubierta',
+      max_capacity: 0,
+      additional_price: 2000,
+      requires_medical_certificate: true,
+    };
+
+    vi.mocked(mockSportValidator.validateMaxCapacity).mockImplementationOnce(() => {
+      throw new Error('El cupo máximo debe ser mayor a cero');
+    });
+
+    await expect(useCase.execute(request)).rejects.toThrow(
+      'El cupo máximo debe ser mayor a cero',
+    );
+
+    expect(mockSportValidator.validateNameIsRequired).toHaveBeenCalledWith('Natación');
+    expect(mockSportValidator.validateMaxCapacity).toHaveBeenCalledWith(0);
+    expect(mockSportValidator.validateNameIsUnique).not.toHaveBeenCalled();
+    expect(mockSportRepo.create).not.toHaveBeenCalled();
+  });
+
+  it('debe rechazar la creación si el nombre ya existe', async () => {
+    const request: CreateSportRequest = {
+      name: 'Fútbol',
+      description: 'Cancha de fútbol 5',
+      max_capacity: 20,
+      additional_price: 1500,
+      requires_medical_certificate: true,
+    };
+
+    vi.mocked(mockSportValidator.validateNameIsUnique).mockRejectedValueOnce(
+      new Error('Ya existe un deporte con ese nombre'),
+    );
+
+    await expect(useCase.execute(request)).rejects.toThrow(
+      'Ya existe un deporte con ese nombre',
+    );
+
+    expect(mockSportValidator.validateNameIsRequired).toHaveBeenCalledWith('Fútbol');
+    expect(mockSportValidator.validateMaxCapacity).toHaveBeenCalledWith(20);
+    expect(mockSportValidator.validateNameIsUnique).toHaveBeenCalledWith('Fútbol');
+    expect(mockSportRepo.create).not.toHaveBeenCalled();
+  });
 });
