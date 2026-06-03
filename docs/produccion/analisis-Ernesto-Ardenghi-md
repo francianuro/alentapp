@@ -120,7 +120,7 @@ Se basa en aislar tres señales fundamentales ("señales doradas") para entender
 
 - Duration (Duración o Latencia): Mide cuánto tiempo tarda el servicio en responder a una petición. Sirve para vigilar la velocidad y la experiencia de los usuarios. Para medirla de forma precisa y evitar que valores atípicos distorsionen la realidad, se recomienda utilizar percentiles (como el percentil 95 o p95) mediante funciones de histograma (ejemplo. ```histogram_quantile(0.95, ...)```).
 
-### 1.2.3 OTLP (OpenTelemetry Protocol) & OLTP vs Prometheus
+### 1.2.4 OTLP (OpenTelemetry Protocol) & OLTP vs Prometheus
 El OTLP (OpenTelemetry Protocol) es el protocolo estándar diseñado por OpenTelemetry para transportar la telemetría de un sistema hacia un colector o backend. Este protocolo es versátil y soporta la transmisión de datos tanto a través de gRPC (generalmente en el puerto 4317) como mediante HTTP (en el puerto 4318).  
 
 Las ventajas de utilizar OTLP y el ecosistema de OpenTelemetry frente a exportar métricas directamente a un SDK específico de Prometheus son sustanciales:
@@ -133,7 +133,7 @@ Las ventajas de utilizar OTLP y el ecosistema de OpenTelemetry frente a exportar
 - Sanitización automática de los datos: OpenTelemetry y Prometheus utilizan modelos de datos con reglas distintas. Por ejemplo, OpenTelemetry permite atributos con puntos (como http.method), mientras que Prometheus exige reglas estrictas donde los puntos deben ser guiones bajos y el formato debe ser snake_case. Al usar el pipeline de OTLP, el OTel Collector procesa la información y utiliza exportadores (como prometheusremotewrite) que sanitizan y convierten automáticamente las etiquetas para que cumplan con los requisitos de Prometheus. Esto te libera de tener que adaptar el formato de tus métricas manualmente dentro de tu código.
 
 
-### 1.2.4 Relación entre OpenTelemetry y Grafana
+### 1.2.5 Relación entre OpenTelemetry y Grafana
 OpenTelemetry y Grafana tienen una relación complementaria en el stack de observabilidad. No compiten, sino que cada uno cumple un rol específico en el pipeline de datos.
 
 #### Roles en el Pipeline
