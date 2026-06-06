@@ -54,3 +54,44 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/health',(r)=>{process.exit(r.statusCode===200?0:1)})"
 CMD ["node", "dist/app.js"]
 ```
+
+### b. packages/web/Dockerfile.prod
+**Propósito**
+Servir el frontend estático (React + Vite) mediante Nginx, optimizando compresión, caché y seguridad.
+
+**Estructura (3 etapas):**
+
+| Etapa | Nombre | Base | Propósito |
+|-------|--------|------|-----------|
+| 1 | ```deps```| ```node:22-alpine``` | Instalar dependencias (incluyendo las de build) |
+| 2 | ```builder```| ```node:22-aplpine``` | Ejecutar ```npm run build -w packages/web``` para generar ```dist/``` |
+| 3 | ```runtime``` | ```nginx:stable-alpine``` | Copiar ```dist/``` a ```/usr/share/nginx/html``` y configurar Nginx |
+
+**Requisitos no funcionales**
+- Tamaño final < 170 MB (original ~570MB)
+- Healthcheck: ```curl -f http://localhost/``` o ```wget --spider```
+- Headers de seguridad: ```X-Frame-Options```, ```X-Content-Type-Options```, ```X-XSS-Protection```
+- Compresión gzip activada, caché de assets estáticos (1 año)
+
+**Estructura de capas:**
+```dockerfile
+FROM node:22-alpine AS deps
+WORKDIR /app
+COPY package*.json ./
+COPY packages/web/package.json ./packages/web/
+COPY packages/shared/package.json ./packages/shared/
+RUN npm ci
+
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build -w packages/web
+
+FROM nginx:stable-alpine AS runtime
+COPY --from=builder /app/packages/web/dist /usr/share/nginx/html
+COPY packages/web/nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+HEALTHCHECK --interval=30s --timeout=3s CMD wget --spider -q http://localhost/ || exit 1
+```
+
