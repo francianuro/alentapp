@@ -1,32 +1,13 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/client/client.js';
-import { PaymentRepository } from '../domain/PaymentRepository.js';
-import { PaymentDTO, PaymentStatus, UpdatePaymentRequest } from '@alentapp/shared';
-
 if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL environment variable is not set');
 }
-
 const prisma = new PrismaClient({
     adapter: new PrismaPg(process.env.DATABASE_URL),
 });
-
-type DBPayment = {
-    id: string;
-    amount: number;
-    month: number;
-    year: number;
-    status: string;
-    due_date: Date;
-    payment_date: Date | null;
-    member_id: string;
-    created_at: Date;
-    updated_at: Date;
-    deleted_at: Date | null;
-};
-
-export class PostgresPaymentRepository implements PaymentRepository {
-    async create(data: Omit<PaymentDTO, 'id' | 'status' | 'payment_date' | 'created_at' | 'updated_at'>): Promise<PaymentDTO> {
+export class PostgresPaymentRepository {
+    async create(data) {
         const payment = await prisma.payment.create({
             data: {
                 amount: data.amount,
@@ -37,57 +18,53 @@ export class PostgresPaymentRepository implements PaymentRepository {
                 status: 'Pending',
             },
         });
-
         return this.mapToDTO(payment);
     }
-
-    async findById(id: string): Promise<PaymentDTO | null> {
+    async findById(id) {
         const payment = await prisma.payment.findFirst({
             where: { id, deleted_at: null },
         });
-
-        if (!payment) return null;
-
+        if (!payment)
+            return null;
         return this.mapToDTO(payment);
     }
-
-    async findAll(): Promise<PaymentDTO[]> {
+    async findAll() {
         const payments = await prisma.payment.findMany({
             where: { deleted_at: null },
             orderBy: { created_at: 'desc' },
         });
-
-        return payments.map(p => this.mapToDTO(p as DBPayment));
+        return payments.map(p => this.mapToDTO(p));
     }
-
-    async update(id: string, data: UpdatePaymentRequest & { deleted_at?: Date | null }): Promise<PaymentDTO> {
-        const updateData: any = {};
-
-        if (data.amount !== undefined) updateData.amount = data.amount;
-        if (data.month !== undefined) updateData.month = data.month;
-        if (data.year !== undefined) updateData.year = data.year;
-        if (data.due_date !== undefined) updateData.due_date = new Date(data.due_date);
-        if (data.status !== undefined) updateData.status = data.status;
+    async update(id, data) {
+        const updateData = {};
+        if (data.amount !== undefined)
+            updateData.amount = data.amount;
+        if (data.month !== undefined)
+            updateData.month = data.month;
+        if (data.year !== undefined)
+            updateData.year = data.year;
+        if (data.due_date !== undefined)
+            updateData.due_date = new Date(data.due_date);
+        if (data.status !== undefined)
+            updateData.status = data.status;
         if (data.payment_date !== undefined) {
             updateData.payment_date = data.payment_date ? new Date(data.payment_date) : null;
         }
-        if (data.deleted_at !== undefined) updateData.deleted_at = data.deleted_at;
-
+        if (data.deleted_at !== undefined)
+            updateData.deleted_at = data.deleted_at;
         const payment = await prisma.payment.update({
             where: { id },
             data: updateData,
         });
-
         return this.mapToDTO(payment);
     }
-
-    private mapToDTO(payment: DBPayment): PaymentDTO {
+    mapToDTO(payment) {
         return {
             id: payment.id,
             amount: payment.amount,
             month: payment.month,
             year: payment.year,
-            status: payment.status as PaymentStatus,
+            status: payment.status,
             due_date: payment.due_date.toISOString().split('T')[0],
             payment_date: payment.payment_date ? payment.payment_date.toISOString().split('T')[0] : null,
             member_id: payment.member_id,

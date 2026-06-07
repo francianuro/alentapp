@@ -1,0 +1,73 @@
+FROM node:22-alpine AS deps
+WORKDIR /app
+
+COPY package*.json ./
+COPY packages/api/package.json ./packages/api/
+COPY packages/shared/package.json ./packages/shared/
+
+RUN npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm ci --omit=dev --omit=peer --omit=optional -w packages/api -w packages/shared --include-workspace-root=false \
+    && rm -rf /app/node_modules/prisma \
+    && rm -rf /app/node_modules/typescript \
+    && rm -rf /app/node_modules/@prisma/studio-core \
+    && rm -rf /app/node_modules/@prisma/dev \
+    && rm -rf /app/node_modules/@electric-sql \
+    && rm -rf /app/node_modules/react \
+    && rm -rf /app/node_modules/react-dom \
+    && rm -rf /app/node_modules/chart.js \
+    && rm -rf /app/node_modules/@types \
+    && rm -rf /app/node_modules/.cache \
+    && find /app/node_modules -type f -name "*.map" -delete \
+    && find /app/node_modules -type f -name "*.ts" -delete \
+    && find /app/node_modules -type f -name "*.d.ts" -delete \
+    && find /app/node_modules -type f -name "*.md" -delete \
+    && find /app/node_modules -type f -name "*.markdown" -delete \
+    && find /app/node_modules -type d \( -name "test" -o -name "tests" -o -name "__tests__" -o -name "docs" -o -name "examples" -o -name "benchmark" \) -prune -exec rm -rf '{}' + \
+    && npm cache clean --force
+
+
+FROM node:22-alpine AS build
+WORKDIR /app
+
+COPY package*.json ./
+COPY packages/api/package.json ./packages/api/
+COPY packages/shared/package.json ./packages/shared/
+
+RUN npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm ci \
+    && npm cache clean --force
+
+COPY . .
+
+RUN npm run build -w packages/shared --if-present
+RUN npm run build -w packages/api
+
+
+FROM node:22-alpine AS runtime
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+RUN rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm \
+    && rm -f /usr/local/bin/npx
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=build /app/packages/api/dist ./packages/api/dist
+COPY --from=build /app/packages/api/src/generated ./packages/api/dist/generated
+COPY --from=build /app/packages/api/package.json ./packages/api/package.json
+COPY --from=build /app/packages/api/prisma ./packages/api/prisma
+COPY --from=build /app/packages/shared ./packages/shared
+
+USER node
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=3s CMD node -e "require('http').get('http://localhost:3000', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"
+
+CMD ["node", "packages/api/dist/app.js"]

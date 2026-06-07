@@ -1,5 +1,5 @@
 import { CreatePaymentRequest, PaymentDTO } from "@alentapp/shared";
-import { PaymentRepository } from "../domain/PaymentRepository.ts";
+import { PaymentRepository } from "../domain/PaymentRepository.js";
 import { PaymentValidator } from "../domain/services/PaymentValidator.js";
 
 export class CreatePaymentUseCase {

@@ -8,8 +8,8 @@
  * - Ejecuta las validaciones del `PaymentValidator`para cualquier campo modificado (como `amount`, `month`, `year`).
  */
 import { PaymentDTO, UpdatePaymentRequest } from "@alentapp/shared";
-import { PaymentRepository } from "../domain/PaymentRepository.ts";
-import { PaymentValidator } from "../domain/services/PaymentValidator.ts";
+import { PaymentRepository } from "../domain/PaymentRepository.js";
+import { PaymentValidator } from "../domain/services/PaymentValidator.js";
 
 export class UpdatePaymentUseCase {
     constructor(
