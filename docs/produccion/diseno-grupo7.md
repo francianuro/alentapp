@@ -95,4 +95,152 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s CMD wget --spider -q http://localhost/ || exit 1
 ```
 
-asda
+## 2.2 Diseño de la observabilidad
+
+### a. Métricas RED a capturar
+
+| Métrica | Tipo OpenTelemetry | Descripción | Labels |
+|---------|--------------------|-------------|--------|
+| Rate | Counter | Requests por segundo | ```method```, ```route```, ```status``` |
+| Errors | Counter | Tasa de error (4xx, 5xx) | ```method```, ```route```, ```status``` |
+| Duration | Histogram | Latencia de requests (ms) | ```method```, ```route``` |
+| Memoria | Gauge | ```process.memory.usage``` | - |
+| Requests activos | Gauge | ```http.requests.active``` | - |
+
+## b. Configuración del SDK de OpenTelemetry
+
+Archivo: ```packages/api/src/infrastructure/telemetry.ts```
+
+**Estructura conceptual**
+
+```typescript
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import { PrometheusExporter } from '@opentelemetry/exporter-prometheus';
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { metrics } from '@opentelemetry/api';
+
+// SDK con auto-instrumentaciones HTTP y Fastify
+const prometheusExporter = new PrometheusExporter({
+  port: 9464,
+  endpoint: '/metrics',
+});
+
+const sdk = new NodeSDK({
+  metricReader: prometheusExporter,
+  instrumentations: getNodeAutoInstrumentations(),
+});
+
+sdk.start();
+
+export function createREDMetrics(meter) {
+  return {
+    requestCounter: meter.createCounter('http.requests.total'),
+    errorCounter: meter.createCounter('http.requests.errors'),
+    requestDuration: meter.createHistogram('http.request.duration', { unit: 'ms' }),
+    activeRequests: meter.createObservableGauge('http.active.requests'),
+  };
+}
+```
+
+## c. Dashboard RED en Grafana
+
+Paneles requeridos (6 paneles)
+
+| Panel | Métrica PromQL | Tipo de gráfico | Propósito |
+|-------|----------------|-----------------|-----------|
+| 1. Requests por segundo | ```rate(http_server_duration_cound[1m])``` | Time series | Tráfico actual |
+| 2. Tasa de error (%) | ```sum(rate(http_server_duration_count{http_status_code=~"[45].."}[1m])) / sum(rate(http_server_duration_count[1m])) * 100``` | Time series | % de errores |
+| 3. Latencia p95/p99 | ```histogram_quantile(0.95, sum(rate(http_server_duration_bucket[5m])) by (le))``` | Time series | Performance |
+| 4. Por status code | ```sum by (http_status_code) (rate(http_server_duration_count[5m]))``` | Stacked area | Distribución de respuestas |
+| 5. Memoria del proceso | ```process_memory_usage_bytes / 1024 / 1024``` | Time series | Consumo de RAM |
+| 6. Endpoints más lentos | ```topk(5, avg by (http_route) (rate(http_server_duration_sum[5m]) / rate(http_server_duration_count[5m])))``` | Bar chart | Cuellos de botella |
+
+## Nuevos servicios para docker-compose.prod.yml
+
+Se agregan dos nuevos servicios, para implementar Grafana y Prometheus, parte del stack a utilizar en la implementación de OpenTelemetry.
+
+**Observaciones**
+- Se usan tags específicos para las imágenes en lugar de ```latest```.
+- ```user:``` se fuerza específicamemte con UID:GID numérico, sin depender del default de la imagen.
+- ```cap_drop: ALL``` y ```no-new-privileges``` consistente con el reto del TP.
+- ```read_only: true``` en ambos, con ```tmpfs``` en ```/tmp``` para las carpetas donde sí se necesita escribir logs en disco.
+- Grafana necesita también ```tmpfs``` en ```/var/log/grafana``` porque con ```read_only``` no puede escribir logs en disco.
+- ```GF_ANALYTICS_REPORTING_ENABLED=false```  evita que Grafana haga requests salientes a grafana.com, reduciendo superficie de red.
+
+
+```yaml
+prometheus:
+    image: prom/prometheus:v3.4.0
+    container_name: alentapp-prometheus
+    user: "65534:65534"  # nobody:nobody, usuario por defecto de la imagen
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    networks:
+      - alentapp-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  grafana:
+    image: grafana/grafana-oss:11.6.1
+    container_name: alentapp-grafana
+    user: "472:472"  # usuario grafana por defecto de la imagen
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./observability/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    ports:
+      - "3001:3000"
+    networks:
+      - alentapp-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/log/grafana
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
