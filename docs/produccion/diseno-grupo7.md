@@ -94,6 +94,55 @@ COPY packages/web/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s CMD wget --spider -q http://localhost/ || exit 1
 ```
+## c. Docker Compose para producción
+
+Archivo: ```docker-compose.prod.yml```
+
+**Propósito:**
+Definir los servicios db, api, web con configuraciones optimizadas para entorno productivo (límites de recursos, healthchecks, redes, logging, seguridad).
+
+Estructura por servicio (tabla de aspectos a configurar):
+
+| Servicio | Resource limits | Healthcheck | Security |
+|----------|-----------------|-------------|----------|
+| ```db``` | CPU:0.5, Mem:256MB | ```pg_isready``` | No exponer puerto al host |
+| ```api``` | CPU:0.5, Mem:512M | endpoint ```/health``` | read_only, cap_dropo ALL, user no-root |
+| ```web``` | CPU:0.3, Mem:128M | puerto 80 | read_only, cap_drop ALL excepto NET_BIND_SERVICE |
+
+**Variables sensibles:** todas desde archivo ```.env``` (no harcodeadas). Ejemplo:
+
+```yaml
+environment:
+  DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+```
+
+**Red personalizada:**
+```yaml
+networks:
+  prod-net:
+    driver: bridge
+```
+
+**Logging:**
+```yaml
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+```
+
+**Security (para ```api```):**
+```yaml
+read_only: true
+cap_drop:
+  - ALL
+cap_add:
+  - NET_BIND_SERVICE   # para bindear puerto 3000
+security_opt:
+  - no-new-privileges:true
+user: "1001:1001"
+```
 
 ## 2.2 Diseño de la observabilidad
 
