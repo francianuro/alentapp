@@ -2,8 +2,8 @@ import {
   CreateMedicalCertificateRequest,
   MedicalCertificateDTO
 } from "@alentapp/shared"
-import { MedicalCertificateRepository } from "../domain/MedicalCertificateRepository"
-import { MemberRepository } from "../domain/MemberRepository" 
+import { MedicalCertificateRepository } from "../domain/MedicalCertificateRepository.js"
+import { MemberRepository } from "../domain/MemberRepository.js"
 import { MedicalCertificateValidator } from "../domain/services/MedicalCertificateValidator.js" 
 export class CreateMedicalCertificateUseCase {
   constructor(

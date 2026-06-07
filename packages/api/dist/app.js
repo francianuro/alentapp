@@ -39,7 +39,6 @@ import { GetLockersUseCase } from './application/GetLockersUseCase.js';
 import { UpdateLockerUseCase } from './application/UpdateLockerUseCase.js';
 import { DeleteLockerUseCase } from './application/DeleteLockerUseCase.js';
 import { LockerController } from './delivery/LockerController.js';
-
 export function buildApp() {
     const server = Fastify({
         logger: {
@@ -60,18 +59,11 @@ export function buildApp() {
     });
     const memberRepo = new PostgresMemberRepository();
     const memberValidator = new MemberValidator(memberRepo);
-
     const createMemberUseCase = new CreateMemberUseCase(memberRepo, memberValidator);
     const getMembersUseCase = new GetMembersUseCase(memberRepo);
     const updateMemberUseCase = new UpdateMemberUseCase(memberRepo, memberValidator);
     const deleteMemberUseCase = new DeleteMemberUseCase(memberRepo);
-    const memberController = new MemberController(
-        createMemberUseCase,
-        getMembersUseCase,
-        updateMemberUseCase,
-        deleteMemberUseCase
-    );
-
+    const memberController = new MemberController(createMemberUseCase, getMembersUseCase, updateMemberUseCase, deleteMemberUseCase);
     const sportRepo = new PostgresSportRepository();
     const enrollmentRepo = new PostgresEnrollmentRepository();
     const sportValidator = new SportValidator(sportRepo);
@@ -79,65 +71,31 @@ export function buildApp() {
     const getSportsUseCase = new GetSportsUseCase(sportRepo);
     const updateSportUseCase = new UpdateSportUseCase(sportRepo, sportValidator);
     const deleteSportUseCase = new DeleteSportUseCase(sportRepo, enrollmentRepo);
-    const sportController = new SportController(
-        createSportUseCase,
-        getSportsUseCase,
-        updateSportUseCase,
-        deleteSportUseCase
-    );
+    const sportController = new SportController(createSportUseCase, getSportsUseCase, updateSportUseCase, deleteSportUseCase);
     const medicalCertificateRepo = new PostgresMedicalCertificateRepository();
     const medicalCertificateValidator = new MedicalCertificateValidator();
-    const createMedicalCertificateUseCase = new CreateMedicalCertificateUseCase(
-      medicalCertificateRepo,
-      memberRepo,
-      medicalCertificateValidator
-    );
-    const getMedicalCertificatesUseCase = new GetMedicalCertificatesUseCase(medicalCertificateRepo
-    );
-     const updateMedicalCertificateUseCase = new UpdateMedicalCertificateUseCase(
-      medicalCertificateRepo,
-      medicalCertificateValidator,
-    );
-    const deleteMedicalCertificateUseCase = new DeleteMedicalCertificateUseCase(
-      medicalCertificateRepo,
-    );
-    const medicalCertificateController = new MedicalCertificateController(
-        createMedicalCertificateUseCase,
-        getMedicalCertificatesUseCase,
-        updateMedicalCertificateUseCase,
-        deleteMedicalCertificateUseCase, 
-    );
-
+    const createMedicalCertificateUseCase = new CreateMedicalCertificateUseCase(medicalCertificateRepo, memberRepo, medicalCertificateValidator);
+    const getMedicalCertificatesUseCase = new GetMedicalCertificatesUseCase(medicalCertificateRepo);
+    const updateMedicalCertificateUseCase = new UpdateMedicalCertificateUseCase(medicalCertificateRepo, medicalCertificateValidator);
+    const deleteMedicalCertificateUseCase = new DeleteMedicalCertificateUseCase(medicalCertificateRepo);
+    const medicalCertificateController = new MedicalCertificateController(createMedicalCertificateUseCase, getMedicalCertificatesUseCase, updateMedicalCertificateUseCase, deleteMedicalCertificateUseCase);
     const paymentRepo = new PostgresPaymentRepository();
     const paymentValidator = new PaymentValidator(memberRepo);
     const createPaymentUseCase = new CreatePaymentUseCase(paymentRepo, paymentValidator);
     const updatePaymentUseCase = new UpdatePaymentUseCase(paymentRepo, paymentValidator);
     const getPaymentsUseCase = new GetPaymentsUseCase(paymentRepo);
-    const paymentController = new PaymentController(createPaymentUseCase, updatePaymentUseCase,getPaymentsUseCase);
-
-
+    const paymentController = new PaymentController(createPaymentUseCase, updatePaymentUseCase, getPaymentsUseCase);
     const lockerRepo = new PostgresLockerRepository();
     const lockerValidator = new LockerValidator(lockerRepo);
     const createLockerUseCase = new CreateLockerUseCase(lockerRepo, memberRepo, lockerValidator);
     const getLockersUseCase = new GetLockersUseCase(lockerRepo);
     const updateLockerUseCase = new UpdateLockerUseCase(lockerRepo, memberRepo, lockerValidator);
     const deleteLockerUseCase = new DeleteLockerUseCase(lockerRepo);
-    const lockerController = new LockerController(
-        createLockerUseCase,
-        getLockersUseCase,
-        updateLockerUseCase,
-        deleteLockerUseCase
-    );
-
+    const lockerController = new LockerController(createLockerUseCase, getLockersUseCase, updateLockerUseCase, deleteLockerUseCase);
     const createEnrollmentUseCase = new CreateEnrollmentUseCase(enrollmentRepo, memberRepo, sportRepo);
     const getEnrollmentsUseCase = new GetEnrollmentsUseCase(enrollmentRepo);
     const deleteEnrollmentUseCase = new DeleteEnrollmentUseCase(enrollmentRepo);
-    const enrollmentController = new EnrollmentController(
-        createEnrollmentUseCase,
-        getEnrollmentsUseCase,
-        deleteEnrollmentUseCase
-    );
-
+    const enrollmentController = new EnrollmentController(createEnrollmentUseCase, getEnrollmentsUseCase, deleteEnrollmentUseCase);
     server.get('/api/v1/socios', memberController.getAll.bind(memberController));
     server.post('/api/v1/socios', memberController.create.bind(memberController));
     server.put('/api/v1/socios/:id', memberController.update.bind(memberController));
@@ -150,40 +108,29 @@ export function buildApp() {
     server.post('/api/v1/certificados-medicos', medicalCertificateController.create.bind(medicalCertificateController));
     server.put('/api/v1/certificados-medicos/:id', medicalCertificateController.update.bind(medicalCertificateController));
     server.delete('/api/v1/certificados-medicos/:id', medicalCertificateController.delete.bind(medicalCertificateController));
-
     server.post('/api/v1/pagos', paymentController.create.bind(paymentController));
     server.get('/api/v1/pagos', paymentController.getAll.bind(paymentController));
-
     server.put('/api/v1/pagos/:id', paymentController.update.bind(paymentController));
-
-
     server.get('/api/v1/lockers', lockerController.getAll.bind(lockerController));
     server.post('/api/v1/lockers', lockerController.create.bind(lockerController));
     server.put('/api/v1/lockers/:id', lockerController.update.bind(lockerController));
     server.delete('/api/v1/lockers/:id', lockerController.delete.bind(lockerController));
     server.post('/api/v1/locker', lockerController.create.bind(lockerController));
     server.put('/api/v1/locker/:id', lockerController.update.bind(lockerController));
-
     server.get('/api/v1/inscripciones', enrollmentController.getAll.bind(enrollmentController));
     server.post('/api/v1/inscripciones', enrollmentController.create.bind(enrollmentController));
     server.delete('/api/v1/inscripciones/:id', enrollmentController.delete.bind(enrollmentController));
-
-
     server.get('/', async (req, rep) => {
-        rep.status(200).send({ msg: 'asd' })
+        rep.status(200).send({ msg: 'asd' });
     });
     return server;
 }
 // Solo iniciar el servidor si el script se ejecuta directamente (no cuando es importado por vitest)
-if (
-  process.argv[1] &&
-  (process.argv[1].endsWith('app.ts') || process.argv[1].endsWith('app.js'))
-) {
+if (process.argv[1] &&
+    (process.argv[1].endsWith('app.ts') || process.argv[1].endsWith('app.js'))) {
     const server = buildApp();
     const port = parseInt(process.env.PORT || '3000', 10);
-    server.listen({ port, host: '0.0.0.0' }, () =>
-        server.log.info(`API server running on http://localhost:${port}`)
-    );
+    server.listen({ port, host: '0.0.0.0' }, () => server.log.info(`API server running on http://localhost:${port}`));
     ['SIGINT', 'SIGTERM'].forEach((signal) => {
         process.on(signal, async () => {
             await server.close();

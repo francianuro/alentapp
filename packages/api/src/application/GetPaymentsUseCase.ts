@@ -1,5 +1,5 @@
 import { PaymentDTO } from "@alentapp/shared";
-import { PaymentRepository } from "../domain/PaymentRepository.ts";
+import { PaymentRepository } from "../domain/PaymentRepository.js";
 
 export class GetPaymentsUseCase {
     constructor(private paymentRepository: PaymentRepository) { }
