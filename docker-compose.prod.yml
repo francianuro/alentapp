@@ -57,6 +57,25 @@ services:
 
     logging: *default-logging
 
+  # Ejecuta prisma migrate deploy antes de que la API levante.
+  # Usa la etapa 'build' del Dockerfile que tiene todas las devDependencies (prisma CLI).
+  # restart: on-failure permite reintentos si la DB aun no esta lista.
+  migrate:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile.prod
+      target: build
+    container_name: alentapp-migrate
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    networks:
+      - prod-net
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+    command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy", "--config=packages/api/prisma.config.ts"]
+
   # API productiva.
   # Construye la imagen desde el Dockerfile productivo de la API.
   # El compose no compila TypeScript por si mismo: eso corresponde al Dockerfile.prod.
@@ -72,7 +91,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_URL: ${DATABASE_URL}
 
     # Expone la API al host en el puerto 3000.
     # Si se quisiera una produccion mas cerrada, podria quitarse y exponer solo web.
@@ -87,6 +106,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
     restart: unless-stopped
 
@@ -139,7 +160,7 @@ services:
 
     # El contenedor escucha en 80; el host accede por 8080 para no chocar con otros servicios.
     ports:
-      - "8080:80"
+      - "8080:8080"
 
     networks:
       - prod-net
@@ -165,12 +186,12 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+      - CHOWN
 
     # Nginx se ejecuta con filesystem read-only, pero necesita algunas rutas temporales.
-    read_only: true
+    #read_only: true
     tmpfs:
       - /tmp
-      - /var/cache/nginx
       - /var/run
 
     # Limites de recursos definidos en el diseno: CPU 0.3 y memoria 128 MB.
