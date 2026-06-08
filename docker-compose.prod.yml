@@ -1,0 +1,332 @@
+# Docker Compose de produccion.
+# Este archivo implementa lo disenado en docs/produccion/diseno-grupo7.md:
+# servicios productivos, variables por .env, healthchecks, red privada,
+# limites de recursos, logging rotativo y seguridad de contenedores.
+
+# Bloque reutilizable de logging.
+# El prefijo x- indica que no es un servicio, sino configuracion auxiliar.
+# &default-logging crea un "alias" YAML para reutilizarlo en cada servicio.
+# max-size y max-file evitan que los logs crezcan sin limite en disco.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # Base de datos productiva.
+  # No publica el puerto 5432 al host: solo la API puede acceder por la red interna.
+  # Esto cumple el requisito de seguridad del diseno: la DB no debe quedar expuesta.
+  db:
+    image: postgres:16-alpine
+    container_name: alentapp-db-prod
+
+    # Variables sensibles tomadas desde .env.
+    # Docker Compose reemplaza ${POSTGRES_USER}, ${POSTGRES_PASSWORD}
+    # y ${POSTGRES_DB} con los valores definidos fuera del archivo.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+    # Volumen persistente para que los datos sobrevivan aunque se recree el contenedor.
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+
+    # Red privada de produccion. Permite que la API use el hostname "db".
+    networks:
+      - prod-net
+
+    # Reinicia el servicio si se cae, salvo que se haya detenido manualmente.
+    restart: unless-stopped
+
+    # Healthcheck pedido por el diseno: pg_isready comprueba que PostgreSQL
+    # ya acepta conexiones antes de que otros servicios dependan de el.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    # Limites de recursos definidos en el diseno: CPU 0.5 y memoria 256 MB.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+    logging: *default-logging
+
+  # Ejecuta prisma migrate deploy antes de que la API levante.
+  # Usa la etapa 'build' del Dockerfile que tiene todas las devDependencies (prisma CLI).
+  # restart: on-failure permite reintentos si la DB aun no esta lista.
+  migrate:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile.prod
+      target: build
+    container_name: alentapp-migrate
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    networks:
+      - prod-net
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+    command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy", "--config=packages/api/prisma.config.ts"]
+
+  # API productiva.
+  # Construye la imagen desde el Dockerfile productivo de la API.
+  # El compose no compila TypeScript por si mismo: eso corresponde al Dockerfile.prod.
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile.prod
+    container_name: alentapp-api-prod
+
+    # NODE_ENV activa comportamiento productivo.
+    # DATABASE_URL usa "db" como host porque ambos servicios comparten prod-net.
+    # Las credenciales no se hardcodean: salen de .env.
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL}
+
+    # Expone la API al host en el puerto 3000.
+    # Si se quisiera una produccion mas cerrada, podria quitarse y exponer solo web.
+    ports:
+      - "3000:3000"
+
+    networks:
+      - prod-net
+
+    # La API espera a que la base este sana antes de arrancar.
+    # Esto evita fallos por intentar conectar a PostgreSQL demasiado pronto.
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+    restart: unless-stopped
+
+    # Healthcheck de la API.
+    # El diseno propone /health, pero la API actual del repo todavia no tiene
+    # ese endpoint. Por eso se valida "/" porque app.ts ya responde HTTP 200 ahi.
+    # Cuando el equipo implemente /health, cambiar localhost:3000/ por localhost:3000/health.
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/',(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 3s
+      start_period: 15s
+      retries: 3
+
+    # Seguridad segun el diseno.
+    # no-new-privileges impide que el proceso gane privilegios dentro del contenedor.
+    security_opt:
+      - no-new-privileges:true
+
+    # Quita todas las capabilities Linux y agrega solo la excepcion documentada.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+
+    # Filesystem en solo lectura. Si la app necesita temporales, se habilitan en tmpfs.
+    read_only: true
+    tmpfs:
+      - /tmp
+
+    # Usuario no-root. Cumple el principio de menor privilegio.
+    user: "1001:1001"
+
+    # Limites de recursos definidos en el diseno: CPU 0.5 y memoria 512 MB.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+    logging: *default-logging
+
+  # Frontend productivo.
+  # Construye React/Vite y lo sirve con Nginx desde packages/web/Dockerfile.prod.
+  web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile.prod
+    container_name: alentapp-web-prod
+
+    # El contenedor escucha en 80; el host accede por 8080 para no chocar con otros servicios.
+    ports:
+      - "8080:8080"
+
+    networks:
+      - prod-net
+
+    # Web espera a que la API este sana.
+    depends_on:
+      api:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+    # Healthcheck pedido por el diseno: verificar que Nginx responda en puerto 80.
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+    # Seguridad del contenedor web.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+
+    # Nginx se ejecuta con filesystem read-only, pero necesita algunas rutas temporales.
+    #read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run
+
+    # Limites de recursos definidos en el diseno: CPU 0.3 y memoria 128 MB.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.3"
+          memory: 128M
+
+    logging: *default-logging
+
+  # Prometheus recolecta metricas.
+  # Forma parte del stack de observabilidad disenado junto con OpenTelemetry.
+  prometheus:
+    # Version fija en lugar de latest para que la produccion sea reproducible.
+    image: prom/prometheus:v3.4.0
+    container_name: alentapp-prometheus
+
+    # Usuario numerico no-root, segun las observaciones del diseno.
+    user: "65534:65534"
+
+    # Configuracion montada en modo solo lectura y volumen para datos historicos.
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+    # Parametros de arranque:
+    # config.file indica el archivo de configuracion,
+    # storage.tsdb.path define donde guardar metricas,
+    # retention.time conserva datos por 15 dias.
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+
+    # UI de Prometheus disponible en http://localhost:9090.
+    ports:
+      - "9090:9090"
+
+    networks:
+      - prod-net
+
+    # Prometheus espera a que la API este sana para empezar a recolectar.
+    depends_on:
+      api:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+    # Mismas practicas de hardening indicadas en el diseno.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+    logging: *default-logging
+
+  # Grafana visualiza las metricas recolectadas por Prometheus.
+  grafana:
+    # Version fija en lugar de latest.
+    image: grafana/grafana-oss:11.6.1
+    container_name: alentapp-grafana
+
+    # Usuario grafana no-root expresado como UID:GID numerico.
+    user: "472:472"
+
+    # Credenciales y flags desde variables.
+    # Se deshabilita el registro publico y llamadas de analytics/update hacia afuera.
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+
+    # grafana_data conserva configuracion interna.
+    # dashboards y datasources se provisionan desde archivos del repo en modo read-only.
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./observability/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+
+    # Grafana escucha en 3000 dentro del contenedor, pero afuera se usa 3001
+    # para no chocar con la API en 3000.
+    ports:
+      - "3001:3000"
+
+    networks:
+      - prod-net
+
+    # Grafana depende de Prometheus porque consulta sus metricas.
+    depends_on:
+      - prometheus
+
+    restart: unless-stopped
+
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+
+    # Grafana necesita escribir temporales y logs; se habilitan como tmpfs
+    # para mantener el resto del filesystem en solo lectura.
+    tmpfs:
+      - /tmp
+      - /var/log/grafana
+
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+    logging: *default-logging
+
+# Red propia de produccion.
+# Aisla los servicios y permite resolucion por nombre: db, api, web, prometheus, grafana.
+networks:
+  prod-net:
+    driver: bridge
+
+# Volumenes persistentes administrados por Docker.
+# Evitan perder datos al recrear contenedores.
+volumes:
+  pgdata_prod:
+  prometheus_data:
+  grafana_data:
