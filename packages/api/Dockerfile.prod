@@ -8,7 +8,7 @@ COPY packages/shared/package.json ./packages/shared/
 RUN npm config set fetch-retries 5 \
     && npm config set fetch-retry-mintimeout 20000 \
     && npm config set fetch-retry-maxtimeout 120000 \
-    && npm ci --omit=dev --omit=peer --omit=optional -w packages/api -w packages/shared --include-workspace-root=false \
+    && npm install --omit=dev --omit=peer --omit=optional -w packages/api -w packages/shared --include-workspace-root=false \
     && rm -rf /app/node_modules/prisma \
     && rm -rf /app/node_modules/typescript \
     && rm -rf /app/node_modules/@prisma/studio-core \
@@ -38,7 +38,7 @@ COPY packages/shared/package.json ./packages/shared/
 RUN npm config set fetch-retries 5 \
     && npm config set fetch-retry-mintimeout 20000 \
     && npm config set fetch-retry-maxtimeout 120000 \
-    && npm ci \
+    && npm install \
     && npm cache clean --force
 
 COPY . .
@@ -63,6 +63,8 @@ COPY --from=build /app/packages/api/src/generated ./packages/api/dist/generated
 COPY --from=build /app/packages/api/package.json ./packages/api/package.json
 COPY --from=build /app/packages/api/prisma ./packages/api/prisma
 COPY --from=build /app/packages/shared ./packages/shared
+COPY packages/api/entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
 
 USER node
 
@@ -70,4 +72,4 @@ EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=3s CMD node -e "require('http').get('http://localhost:3000', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"
 
-CMD ["node", "packages/api/dist/app.js"]
+CMD ["sh", "./entrypoint.sh"]
