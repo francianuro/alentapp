@@ -174,7 +174,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(http_server_duration_count{http_status_code=~\"[45]..\"}[1m])) / sum(rate(http_server_duration_count[1m])) * 100",
+          "expr": "(sum(rate(http_server_duration_count{http_status_code=~\"[45]..\"}[1m])) or vector(0)) / sum(rate(http_server_duration_count[1m])) * 100",
           "legendFormat": "Errores %",
           "range": true,
           "refId": "A",
@@ -466,7 +466,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "process_memory_usage_bytes / 1024 / 1024",
+          "expr": "v8js_memory_heap_used / 1024 / 1024",
           "legendFormat": "Memoria MB",
           "range": true,
           "refId": "A",
